@@ -134,65 +134,48 @@ export default class FCartITADPrices extends Feature<CCart> {
     }
 
     private findPriceNode(container: HTMLElement): HTMLElement | null {
-        // Look for price elements within the container
-        // Steam typically uses elements with "price" in the class name
-        // Prioritize sale/final price selectors first
-        const selectors = [
-            '[class*="SalePrice"]',
-            '[class*="FinalPrice"]',
-            '[class*="CurrentPrice"]',
-            '[class*="ItemPriceBox"]',
-            '[class*="StoreSalePrice"]',
-            '[class*="Price"]:not([class*="PriceBox"]):not([class*="OriginalPrice"])',
-            '[class*="price"]:not([class*="original"])',
-        ];
+        // Steam cart structure:
+        // - Sale: has StoreOriginalPrice (struck through) followed by current price
+        // - No sale: just has a single price div
+        // The current price is always the last price element that is NOT StoreOriginalPrice
 
-        for (const selector of selectors) {
-            const priceEl = container.querySelector<HTMLElement>(selector);
-            if (priceEl && !this.isStrikethrough(priceEl)) {
-                // Make sure it looks like a price (contains numbers and currency symbols)
-                const text = priceEl.textContent || "";
-                if (/[\d.,]+/.test(text) && /[$€£¥₽₴₩₹R\$]|USD|EUR|GBP|Free/i.test(text)) {
-                    return priceEl;
+        // First, try to find all price-like leaf elements
+        const priceElements: HTMLElement[] = [];
+        const allElements = container.querySelectorAll('div, span');
+
+        for (const el of allElements) {
+            const htmlEl = el as HTMLElement;
+
+            // Skip if it has StoreOriginalPrice class (the struck-through original price)
+            if (htmlEl.classList.contains('StoreOriginalPrice')) {
+                continue;
+            }
+
+            // Skip if it's a discount badge (like -50%)
+            if (htmlEl.classList.contains('StoreSaleDiscountBox')) {
+                continue;
+            }
+
+            // Check if it's a leaf node with price-like text
+            const text = htmlEl.textContent?.trim() || "";
+
+            // Must be a simple price format (currency symbol + numbers)
+            if (/^[$€£¥₽₴₩₹]?\s*[\d.,]+\s*[$€£¥₽₴₩₹]?$/.test(text) ||
+                /^Free$/i.test(text)) {
+                // Make sure this element directly contains the text (not via children)
+                if (htmlEl.childElementCount === 0 ||
+                    (htmlEl.childElementCount > 0 && htmlEl.innerText.trim() === text)) {
+                    priceElements.push(htmlEl);
                 }
             }
         }
 
-        // Fallback: look for any element containing price-like text (excluding strikethrough)
-        const allElements = container.querySelectorAll('*');
-        for (const el of allElements) {
-            if (el.children.length === 0 && !this.isStrikethrough(el as HTMLElement)) { // leaf nodes only
-                const text = el.textContent || "";
-                if (/^\s*[$€£¥₽₴₩₹R\$]?\s*[\d.,]+\s*[$€£¥₽₴₩₹]?\s*$/.test(text) ||
-                    /Free/i.test(text)) {
-                    return el as HTMLElement;
-                }
-            }
+        // Return the last matching element (which is the current/final price)
+        if (priceElements.length > 0) {
+            return priceElements[priceElements.length - 1]!;
         }
 
         return null;
-    }
-
-    private isStrikethrough(element: HTMLElement): boolean {
-        // Check if the element or any parent has strikethrough styling
-        let current: HTMLElement | null = element;
-        while (current && current !== document.body) {
-            const style = window.getComputedStyle(current);
-            if (style.textDecoration.includes('line-through') ||
-                style.textDecorationLine.includes('line-through')) {
-                return true;
-            }
-            // Also check for common "original price" class patterns
-            if (current.className &&
-                (current.className.includes('OriginalPrice') ||
-                 current.className.includes('original') ||
-                 current.className.includes('Original') ||
-                 current.className.includes('BasePrice'))) {
-                return true;
-            }
-            current = current.parentElement;
-        }
-        return false;
     }
 
     private attachPricePopup(priceNode: HTMLElement, data: TPriceOverview): void {
