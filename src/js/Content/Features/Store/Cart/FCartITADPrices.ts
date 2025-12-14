@@ -136,16 +136,20 @@ export default class FCartITADPrices extends Feature<CCart> {
     private findPriceNode(container: HTMLElement): HTMLElement | null {
         // Look for price elements within the container
         // Steam typically uses elements with "price" in the class name
+        // Prioritize sale/final price selectors first
         const selectors = [
+            '[class*="SalePrice"]',
+            '[class*="FinalPrice"]',
+            '[class*="CurrentPrice"]',
             '[class*="ItemPriceBox"]',
             '[class*="StoreSalePrice"]',
-            '[class*="Price"]:not([class*="PriceBox"])',
-            '[class*="price"]',
+            '[class*="Price"]:not([class*="PriceBox"]):not([class*="OriginalPrice"])',
+            '[class*="price"]:not([class*="original"])',
         ];
 
         for (const selector of selectors) {
             const priceEl = container.querySelector<HTMLElement>(selector);
-            if (priceEl) {
+            if (priceEl && !this.isStrikethrough(priceEl)) {
                 // Make sure it looks like a price (contains numbers and currency symbols)
                 const text = priceEl.textContent || "";
                 if (/[\d.,]+/.test(text) && /[$€£¥₽₴₩₹R\$]|USD|EUR|GBP|Free/i.test(text)) {
@@ -154,10 +158,10 @@ export default class FCartITADPrices extends Feature<CCart> {
             }
         }
 
-        // Fallback: look for any element containing price-like text
+        // Fallback: look for any element containing price-like text (excluding strikethrough)
         const allElements = container.querySelectorAll('*');
         for (const el of allElements) {
-            if (el.children.length === 0) { // leaf nodes only
+            if (el.children.length === 0 && !this.isStrikethrough(el as HTMLElement)) { // leaf nodes only
                 const text = el.textContent || "";
                 if (/^\s*[$€£¥₽₴₩₹R\$]?\s*[\d.,]+\s*[$€£¥₽₴₩₹]?\s*$/.test(text) ||
                     /Free/i.test(text)) {
@@ -167,6 +171,28 @@ export default class FCartITADPrices extends Feature<CCart> {
         }
 
         return null;
+    }
+
+    private isStrikethrough(element: HTMLElement): boolean {
+        // Check if the element or any parent has strikethrough styling
+        let current: HTMLElement | null = element;
+        while (current && current !== document.body) {
+            const style = window.getComputedStyle(current);
+            if (style.textDecoration.includes('line-through') ||
+                style.textDecorationLine.includes('line-through')) {
+                return true;
+            }
+            // Also check for common "original price" class patterns
+            if (current.className &&
+                (current.className.includes('OriginalPrice') ||
+                 current.className.includes('original') ||
+                 current.className.includes('Original') ||
+                 current.className.includes('BasePrice'))) {
+                return true;
+            }
+            current = current.parentElement;
+        }
+        return false;
     }
 
     private attachPricePopup(priceNode: HTMLElement, data: TPriceOverview): void {
