@@ -134,45 +134,41 @@ export default class FCartITADPrices extends Feature<CCart> {
     }
 
     private findPriceNode(container: HTMLElement): HTMLElement | null {
-        // Steam cart structure:
-        // - Sale: has StoreOriginalPrice (struck through) followed by current price
-        // - No sale: just has a single price div
-        // The current price is always the last price element that is NOT StoreOriginalPrice
+        // Steam cart structure - we want the price container div (class: ysGS-IPPWEkwN-O5rr-0V)
+        // which wraps the entire price display (discount badge, original price, current price)
 
-        // First, try to find all price-like leaf elements
-        const priceElements: HTMLElement[] = [];
-        const allElements = container.querySelectorAll('div, span');
+        // First, try to find by the known container class
+        const priceContainer = container.querySelector<HTMLElement>('.ysGS-IPPWEkwN-O5rr-0V');
+        if (priceContainer) {
+            return priceContainer;
+        }
 
-        for (const el of allElements) {
-            const htmlEl = el as HTMLElement;
-
-            // Skip if it has StoreOriginalPrice class (the struck-through original price)
-            if (htmlEl.classList.contains('StoreOriginalPrice')) {
-                continue;
-            }
-
-            // Skip if it's a discount badge (like -50%)
-            if (htmlEl.classList.contains('StoreSaleDiscountBox')) {
-                continue;
-            }
-
-            // Check if it's a leaf node with price-like text
-            const text = htmlEl.textContent?.trim() || "";
-
-            // Must be a simple price format (currency symbol + numbers)
-            if (/^[$€£¥₽₴₩₹]?\s*[\d.,]+\s*[$€£¥₽₴₩₹]?$/.test(text) ||
-                /^Free$/i.test(text)) {
-                // Make sure this element directly contains the text (not via children)
-                if (htmlEl.childElementCount === 0 ||
-                    (htmlEl.childElementCount > 0 && htmlEl.innerText.trim() === text)) {
-                    priceElements.push(htmlEl);
+        // Fallback: Find the container that holds StoreOriginalPrice or StoreSaleDiscountBox
+        const saleIndicator = container.querySelector('.StoreOriginalPrice, .StoreSaleDiscountBox');
+        if (saleIndicator) {
+            // Walk up to find the container div (usually 2-3 levels up)
+            let parent = saleIndicator.parentElement;
+            while (parent && parent !== container) {
+                // The container is typically a div that's a direct child of a larger container
+                if (parent.parentElement && parent.parentElement.querySelector('img')) {
+                    return parent as HTMLElement;
                 }
+                parent = parent.parentElement;
             }
         }
 
-        // Return the last matching element (which is the current/final price)
-        if (priceElements.length > 0) {
-            return priceElements[priceElements.length - 1]!;
+        // Last fallback: Find any element containing price text and get its container
+        const allElements = container.querySelectorAll('div');
+        for (const el of allElements) {
+            const text = el.textContent?.trim() || "";
+            // Look for price pattern
+            if (/^[$€£¥₽₴₩₹]?\s*[\d.,]+\s*[$€£¥₽₴₩₹]?$/.test(text)) {
+                // Walk up a couple levels to get the container
+                let parent = el.parentElement?.parentElement;
+                if (parent && parent !== container) {
+                    return parent as HTMLElement;
+                }
+            }
         }
 
         return null;
