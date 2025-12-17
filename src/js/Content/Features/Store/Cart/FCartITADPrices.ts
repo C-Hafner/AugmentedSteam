@@ -108,17 +108,16 @@ export default class FCartITADPrices extends Feature<CCart> {
         const maxDepth = 10;
 
         while (current && depth < maxDepth) {
-            // Look for common cart item patterns
-            // Check if this element contains both a link and a price-like element
-            const hasPrice = current.querySelector('[class*="price" i], [class*="Price"]');
+            // Check if this element contains both an image and the price container class
+            const hasPriceContainer = current.querySelector('.ysGS-IPPWEkwN-O5rr-0V');
             const hasImage = current.querySelector('img');
 
-            if (hasPrice && hasImage) {
+            if (hasPriceContainer && hasImage) {
                 return current;
             }
 
             // Also check for specific class patterns Steam might use
-            if (current.className && (
+            if (current.className && typeof current.className === 'string' && (
                 current.className.includes('CartRow') ||
                 current.className.includes('cart_item') ||
                 current.className.includes('CartItem')
@@ -135,38 +134,40 @@ export default class FCartITADPrices extends Feature<CCart> {
 
     private findPriceNode(container: HTMLElement): HTMLElement | null {
         // Steam cart structure - we want the price container div (class: ysGS-IPPWEkwN-O5rr-0V)
-        // which wraps the entire price display (discount badge, original price, current price)
+        // which wraps the price display. There are TWO elements with this class per item:
+        // 1. The price container (contains currency amounts)
+        // 2. The Add/Remove buttons container
+        // We need to find the one that contains actual price text
 
-        // First, try to find by the known container class
-        const priceContainer = container.querySelector<HTMLElement>('.ysGS-IPPWEkwN-O5rr-0V');
-        if (priceContainer) {
-            return priceContainer;
-        }
-
-        // Fallback: Find the container that holds StoreOriginalPrice or StoreSaleDiscountBox
-        const saleIndicator = container.querySelector('.StoreOriginalPrice, .StoreSaleDiscountBox');
-        if (saleIndicator) {
-            // Walk up to find the container div (usually 2-3 levels up)
-            let parent = saleIndicator.parentElement;
-            while (parent && parent !== container) {
-                // The container is typically a div that's a direct child of a larger container
-                if (parent.parentElement && parent.parentElement.querySelector('img')) {
-                    return parent as HTMLElement;
-                }
-                parent = parent.parentElement;
+        const priceContainers = container.querySelectorAll<HTMLElement>('.ysGS-IPPWEkwN-O5rr-0V');
+        for (const priceContainer of priceContainers) {
+            const text = priceContainer.textContent || "";
+            // Check if this container has price-like content (currency symbols and numbers)
+            // but NOT "Add" or "Remove" text
+            if (/[$€£¥₽₴₩₹]?\s*[\d.,]+/.test(text) &&
+                !text.includes('Add') &&
+                !text.includes('Remove')) {
+                return priceContainer;
             }
         }
 
-        // Last fallback: Find any element containing price text and get its container
+        // Fallback: Find any element containing price text and get its container
         const allElements = container.querySelectorAll('div');
         for (const el of allElements) {
             const text = el.textContent?.trim() || "";
             // Look for price pattern
             if (/^[$€£¥₽₴₩₹]?\s*[\d.,]+\s*[$€£¥₽₴₩₹]?$/.test(text)) {
-                // Walk up a couple levels to get the container
-                let parent = el.parentElement?.parentElement;
-                if (parent && parent !== container) {
-                    return parent as HTMLElement;
+                // Walk up to find the ysGS container or a reasonable parent
+                let parent: HTMLElement | null = el.parentElement;
+                while (parent && parent !== container) {
+                    if (parent.classList.contains('ysGS-IPPWEkwN-O5rr-0V')) {
+                        return parent;
+                    }
+                    parent = parent.parentElement;
+                }
+                // If we couldn't find the specific class, return a parent container
+                if (el.parentElement?.parentElement) {
+                    return el.parentElement.parentElement as HTMLElement;
                 }
             }
         }
