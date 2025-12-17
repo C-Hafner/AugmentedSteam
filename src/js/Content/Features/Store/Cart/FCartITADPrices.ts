@@ -108,17 +108,16 @@ export default class FCartITADPrices extends Feature<CCart> {
         const maxDepth = 10;
 
         while (current && depth < maxDepth) {
-            // Look for common cart item patterns
-            // Check if this element contains both a link and a price-like element
-            const hasPrice = current.querySelector('[class*="price" i], [class*="Price"]');
+            // Check if this element contains both an image and the price container class
+            const hasPriceContainer = current.querySelector('.ysGS-IPPWEkwN-O5rr-0V');
             const hasImage = current.querySelector('img');
 
-            if (hasPrice && hasImage) {
+            if (hasPriceContainer && hasImage) {
                 return current;
             }
 
             // Also check for specific class patterns Steam might use
-            if (current.className && (
+            if (current.className && typeof current.className === 'string' && (
                 current.className.includes('CartRow') ||
                 current.className.includes('cart_item') ||
                 current.className.includes('CartItem')
@@ -134,34 +133,41 @@ export default class FCartITADPrices extends Feature<CCart> {
     }
 
     private findPriceNode(container: HTMLElement): HTMLElement | null {
-        // Look for price elements within the container
-        // Steam typically uses elements with "price" in the class name
-        const selectors = [
-            '[class*="ItemPriceBox"]',
-            '[class*="StoreSalePrice"]',
-            '[class*="Price"]:not([class*="PriceBox"])',
-            '[class*="price"]',
-        ];
+        // Steam cart structure - we want the price container div (class: ysGS-IPPWEkwN-O5rr-0V)
+        // which wraps the price display. There are TWO elements with this class per item:
+        // 1. The price container (contains currency amounts)
+        // 2. The Add/Remove buttons container
+        // We need to find the one that contains actual price text
 
-        for (const selector of selectors) {
-            const priceEl = container.querySelector<HTMLElement>(selector);
-            if (priceEl) {
-                // Make sure it looks like a price (contains numbers and currency symbols)
-                const text = priceEl.textContent || "";
-                if (/[\d.,]+/.test(text) && /[$€£¥₽₴₩₹R\$]|USD|EUR|GBP|Free/i.test(text)) {
-                    return priceEl;
-                }
+        const priceContainers = container.querySelectorAll<HTMLElement>('.ysGS-IPPWEkwN-O5rr-0V');
+        for (const priceContainer of priceContainers) {
+            const text = priceContainer.textContent || "";
+            // Check if this container has price-like content (currency symbols and numbers)
+            // but NOT "Add" or "Remove" text
+            if (/[$€£¥₽₴₩₹]?\s*[\d.,]+/.test(text) &&
+                !text.includes('Add') &&
+                !text.includes('Remove')) {
+                return priceContainer;
             }
         }
 
-        // Fallback: look for any element containing price-like text
-        const allElements = container.querySelectorAll('*');
+        // Fallback: Find any element containing price text and get its container
+        const allElements = container.querySelectorAll('div');
         for (const el of allElements) {
-            if (el.children.length === 0) { // leaf nodes only
-                const text = el.textContent || "";
-                if (/^\s*[$€£¥₽₴₩₹R\$]?\s*[\d.,]+\s*[$€£¥₽₴₩₹]?\s*$/.test(text) ||
-                    /Free/i.test(text)) {
-                    return el as HTMLElement;
+            const text = el.textContent?.trim() || "";
+            // Look for price pattern
+            if (/^[$€£¥₽₴₩₹]?\s*[\d.,]+\s*[$€£¥₽₴₩₹]?$/.test(text)) {
+                // Walk up to find the ysGS container or a reasonable parent
+                let parent: HTMLElement | null = el.parentElement;
+                while (parent && parent !== container) {
+                    if (parent.classList.contains('ysGS-IPPWEkwN-O5rr-0V')) {
+                        return parent;
+                    }
+                    parent = parent.parentElement;
+                }
+                // If we couldn't find the specific class, return a parent container
+                if (el.parentElement?.parentElement) {
+                    return el.parentElement.parentElement as HTMLElement;
                 }
             }
         }
